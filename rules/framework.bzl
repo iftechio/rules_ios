@@ -158,9 +158,11 @@ def _get_virtual_framework_info(ctx, framework_files, compilation_context_fields
 
     # We need to map all the deps here - for both swift headers and others
     fw_dep_vfsoverlays = []
+    framework_deps = []
     for dep in transitive_deps + deps:
         if not FrameworkInfo in dep:
             continue
+        framework_deps.append(dep)
         framework_info = dep[FrameworkInfo]
         fw_dep_vfsoverlays.extend(framework_info.vfsoverlay_infos)
         framework_headers = depset(framework_info.headers + framework_info.modulemap + framework_info.private_headers)
@@ -201,6 +203,7 @@ def _get_virtual_framework_info(ctx, framework_files, compilation_context_fields
         modulemap = outputs.modulemap,
         swiftmodule = outputs.swiftmodule,
         swiftdoc = outputs.swiftdoc,
+        framework_deps = framework_deps,
     )
 
 def _get_framework_files(ctx, deps):
@@ -553,12 +556,18 @@ def _apple_framework_packaging_impl(ctx):
     if virtualize_frameworks:
         framework_info = _get_virtual_framework_info(ctx, framework_files, compilation_context_fields, deps, transitive_deps, vfs)
     else:
+        framework_deps = []
+        for dep in transitive_deps:
+            if not FrameworkInfo in dep:
+                continue
+            framework_deps.append(dep)
         framework_info = FrameworkInfo(
             headers = outputs.headers,
             private_headers = outputs.private_headers,
             modulemap = outputs.modulemap,
             swiftmodule = outputs.swiftmodule,
             swiftdoc = outputs.swiftdoc,
+            framework_deps = framework_deps,
         )
 
         # If not virtualizing the framework - then it runs a "clean"
