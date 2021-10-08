@@ -1,6 +1,8 @@
 """ Xcode Project Generation Logic """
 
 load("@build_bazel_rules_apple//apple:providers.bzl", "AppleBundleInfo")
+load("//rules:providers.bzl", "FrameworkInfo")
+load("//rules:providers.bzl", "DepInfo")
 load("@build_bazel_rules_apple//apple/internal:platform_support.bzl", "platform_support")
 load("@build_bazel_rules_swift//swift:swift.bzl", "SwiftInfo")
 load("@bazel_skylib//lib:paths.bzl", "paths")
@@ -224,7 +226,6 @@ def _xcodeproj_aspect_impl(target, ctx):
         bazel_build_target_name = "@%s//" % target.label.workspace_name
     bazel_build_target_name += "%s:%s" % (target.label.package, target.label.name)
     bazel_bin_subdir = "%s/%s" % (target.label.workspace_root, target.label.package)
-
     if AppleBundleInfo in target:
         swift_objc_header_path = None
         if SwiftInfo in target:
@@ -249,6 +250,9 @@ def _xcodeproj_aspect_impl(target, ctx):
                 test_host_appname = test_host_target[_TargetInfo].direct_targets[0].name
 
         framework_includes = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "framework_includes"))
+        framework_deps = []
+        if DepInfo in target:
+            framework_deps = target[DepInfo].framework_deps
         info = struct(
             name = bundle_info.bundle_name,
             bundle_id = bundle_info.bundle_id,
@@ -275,6 +279,7 @@ def _xcodeproj_aspect_impl(target, ctx):
             objc_copts = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "objc_copts")),
             commandline_args = commandline_args,
             targeted_device_family = _targeted_device_family(ctx),
+            deps = depset(framework_deps),
         )
         if ctx.rule.kind != "apple_framework_packaging":
             providers.append(
@@ -305,7 +310,7 @@ def _xcodeproj_aspect_impl(target, ctx):
             test_host_direct_targets = test_host_target[_TargetInfo].direct_targets
             direct_targets.extend(test_host_direct_targets)
             transitive_targets.extend(test_host_direct_targets)
-
+        
         target_info = _TargetInfo(direct_targets = direct_targets, targets = depset(transitive_targets, transitive = _get_attr_values_for_name(deps, _TargetInfo, "targets")))
         providers.append(target_info)
     else:
@@ -624,14 +629,13 @@ env -u RUBYOPT -u RUBY_HOME -u GEM_HOME $BAZEL_BUILD_EXEC $BAZEL_BUILD_TARGET_LA
 $BAZEL_INSTALLER
 """
 
-def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots, all_transitive_targets):
+def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
     """Helper method to generate dicts for targets and schemes inside Xcode context
 
     Args:
         ctx: context provided to rule impl
         targets: each dict contains info of a bazel target (not xcode target)
         src_dot_dots: caller needs to figure out how many `../` needed to correctly points to an actual file
-        all_transitive_targets: includes all the targets built with their different configurations.
         Some configurations are only applied when the target is reached transitively
         (e.g. via an app or test that applies and propagates new build settings).
 
@@ -642,6 +646,10 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots, all_tran
     xcodeproj_targets_by_name = {}
     xcodeproj_schemes_by_name = {}
     for target_info in targets:
+        deps_target = []
+        for dep in target_info.deps.to_list():
+            if AppleBundleInfo in dep:
+                deps_target.append(dep[AppleBundleInfo].bundle_name)
         target_name = target_info.name
         product_type = target_info.product_type
         lldbinit_file = "$CONFIGURATION_TEMP_DIR/%s.lldbinit" % target_name
@@ -674,18 +682,6 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots, all_tran
             "BAZEL_BUILD_TARGET_LABEL": target_info.bazel_build_target_name,
             "BAZEL_BUILD_TARGET_WORKSPACE": target_info.bazel_build_target_workspace,
         }
-
-        virtualize_frameworks = feature_names.virtualize_frameworks in ctx.features
-        if virtualize_frameworks:
-            target_settings["OTHER_SWIFT_FLAGS"] = _swift_copts_for_target(target_name, all_transitive_targets)
-            target_settings["OTHER_CFLAGS"] = _objc_copts_for_target(target_name, all_transitive_targets)
-        else:
-            target_settings["BAZEL_SWIFTMODULEFILES_TO_COPY"] = _swiftmodulepaths_for_target(target_name, all_transitive_targets)
-            target_settings["HEADER_SEARCH_PATHS"] = _header_search_paths_for_target(target_name, all_transitive_targets)
-
-        framework_search_paths = _framework_search_paths_for_target(target_name, all_transitive_targets)
-        target_settings["FRAMEWORK_SEARCH_PATHS"] = " ".join(framework_search_paths)
-
         macros = ["\"%s\"" % d for d in target_info.cc_defines.to_list()]
         macros.append("$(inherited)")
         target_settings["GCC_PREPROCESSOR_DEFINITIONS"] = " ".join(macros)
@@ -703,25 +699,23 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots, all_tran
         )
         extra_clang_flags = ["-D%s" % d for d in target_info.cc_defines.to_list()]
 
-        if virtualize_frameworks:
-            extra_clang_flags += ["-Xcc %s" % d for d in _objc_copts_for_target(target_name, all_transitive_targets)]
+        # if virtualize_frameworks:
+        #     extra_clang_flags += ["-Xcc %s" % d for d in _objc_copts_for_target(target_name, all_transitive_targets)]
 
-        if not ctx.attr.xcode_native:
-            target_settings["BAZEL_LLDB_SWIFT_EXTRA_CLANG_FLAGS"] = " ".join(extra_clang_flags)
-            target_settings["BAZEL_LLDB_INIT_FILE"] = lldbinit_file
-            
-            if product_type == "application":
-                target_settings["INFOPLIST_FILE"] = "$BAZEL_STUBS_DIR/Info-stub.plist"
-                target_settings["PRODUCT_BUNDLE_IDENTIFIER"] = target_info.bundle_id
-
+        target_settings["PRODUCT_BUNDLE_IDENTIFIER"] = target_info.bundle_id
+        
         if product_type == "bundle.unit-test":
             target_settings["SUPPORTS_MACCATALYST"] = False
         target_dependencies = []
         test_host_appname = getattr(target_info, "test_host_appname", None)
+
         if test_host_appname:
             target_dependencies.append({"target": test_host_appname})
             target_settings["TEST_HOST"] = "$(BUILT_PRODUCTS_DIR)/{test_host_appname}.app/{test_host_appname}".format(test_host_appname = test_host_appname)
 
+        for target_dep_name in deps_target:
+            target_dependencies.append({"target": target_dep_name})
+            
         if target_info.targeted_device_family:
             target_settings["TARGETED_DEVICE_FAMILY"] = target_info.targeted_device_family
 
@@ -933,8 +927,7 @@ def _xcodeproj_impl(ctx):
         targets = []
         for t in _get_attr_values_for_name(ctx.attr.deps, _TargetInfo, "direct_targets"):
             targets.extend(t)
-
-    (xcodeproj_targets_by_name, xcodeproj_schemes_by_name) = _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots, all_transitive_targets)
+    (xcodeproj_targets_by_name, xcodeproj_schemes_by_name) = _populate_xcodeproj_targets_and_schemes(ctx, all_transitive_targets, src_dot_dots)
 
     project_file_groups = [
         {"path": paths.join(src_dot_dots, f.short_path), "optional": True}

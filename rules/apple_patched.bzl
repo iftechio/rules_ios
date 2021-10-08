@@ -104,9 +104,11 @@ def _get_framework_info_providers(ctx, old_cc_info, old_objc_provider):
         modulemap = modulemap_list,
         swiftmodule = [],
         swiftdoc = [],
-        framework_deps = [],
     )
-    return [framework_info]
+    depInfo = DepInfo(
+        framework_deps = []
+    )
+    return [framework_info, depInfo]
 
 def _apple_framework_import_modulemap_impl(ctx):
     legacy_target = ctx.attr.legacy_target
