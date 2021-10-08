@@ -706,13 +706,13 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots, all_tran
         if virtualize_frameworks:
             extra_clang_flags += ["-Xcc %s" % d for d in _objc_copts_for_target(target_name, all_transitive_targets)]
 
-        target_settings["BAZEL_LLDB_SWIFT_EXTRA_CLANG_FLAGS"] = " ".join(extra_clang_flags)
-
-        target_settings["BAZEL_LLDB_INIT_FILE"] = lldbinit_file
-
-        if product_type == "application":
-            target_settings["INFOPLIST_FILE"] = "$BAZEL_STUBS_DIR/Info-stub.plist"
-            target_settings["PRODUCT_BUNDLE_IDENTIFIER"] = target_info.bundle_id
+        if not ctx.attr.xcode_native:
+            target_settings["BAZEL_LLDB_SWIFT_EXTRA_CLANG_FLAGS"] = " ".join(extra_clang_flags)
+            target_settings["BAZEL_LLDB_INIT_FILE"] = lldbinit_file
+            
+            if product_type == "application":
+                target_settings["INFOPLIST_FILE"] = "$BAZEL_STUBS_DIR/Info-stub.plist"
+                target_settings["PRODUCT_BUNDLE_IDENTIFIER"] = target_info.bundle_id
 
         if product_type == "bundle.unit-test":
             target_settings["SUPPORTS_MACCATALYST"] = False
@@ -732,10 +732,11 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots, all_tran
                 "script": ctx.attr.additional_prebuild_script,
             })
 
-        pre_build_scripts.append({
-            "name": "Build with bazel",
-            "script": _BUILD_WITH_BAZEL_SCRIPT,
-        })
+        if not ctx.attr.xcode_native:
+            pre_build_scripts.append({
+                "name": "Build with bazel",
+                "script": _BUILD_WITH_BAZEL_SCRIPT,
+            })
 
         xcodeproj_targets_by_name[target_name] = {
             "sources": compiled_sources + compiled_non_arc_sources + asset_sources,
@@ -877,50 +878,40 @@ def _xcodeproj_impl(ctx):
         "groupSortPosition": "none",
         "settingPresets": "none",
     }
+    
     proj_settings_base = {}
-
-    # User defined macro for Bazel only
-    proj_settings_base.update({
-        "BAZEL_BUILD_EXEC": "$BAZEL_STUBS_DIR/build-wrapper",
-        "BAZEL_OUTPUT_PROCESSOR": "$BAZEL_STUBS_DIR/output-processor.rb",
-        "BAZEL_PATH": ctx.attr.bazel_path,
-        "BAZEL_WORKSPACE_ROOT": "$SRCROOT/%s" % script_dot_dots,
-        "BAZEL_STUBS_DIR": "$PROJECT_FILE_PATH/bazelstubs",
-        "BAZEL_INSTALLERS_DIR": "$PROJECT_FILE_PATH/bazelinstallers",
-        "BAZEL_INSTALLER": "$BAZEL_INSTALLERS_DIR/%s" % ctx.executable.installer.basename,
-        "BAZEL_EXECUTION_LOG_ENABLED": ctx.attr.bazel_execution_log_enabled,
-        "BAZEL_PROFILE_ENABLED": ctx.attr.bazel_profile_enabled,
-        "BAZEL_CONFIGS": ctx.attr.configs,
-        "BAZEL_ADDITIONAL_BAZEL_BUILD_OPTIONS": " ".join(["{} ".format(opt) for opt in ctx.attr.additional_bazel_build_options]),
-        "BAZEL_ADDITIONAL_LLDB_SETTINGS": "\n".join(ctx.attr.additional_lldb_settings),
-    })
-
-    # Stubbing compiler, linker executables used by xcode so no actual building happening on Xcode side
-    proj_settings_base.update({
-        "CC": "$BAZEL_STUBS_DIR/clang-stub",
-        "CXX": "$CC",
-        "CLANG_ANALYZER_EXEC": "$CC",
-        "LD": "$BAZEL_STUBS_DIR/ld-stub",
-        "LIBTOOL": "/usr/bin/true",
-        "SWIFT_EXEC": "$BAZEL_STUBS_DIR/swiftc-stub",
-        # LD isn't used for all use cases - direct it to use this LD
-        "OTHER_LDFLAGS": "-fuse-ld=$BAZEL_STUBS_DIR/ld-stub",
-    })
+    if not ctx.attr.xcode_native:
+        # User defined macro for Bazel only
+        proj_settings_base.update({
+            "BAZEL_BUILD_EXEC": "$BAZEL_STUBS_DIR/build-wrapper",
+            "BAZEL_OUTPUT_PROCESSOR": "$BAZEL_STUBS_DIR/output-processor.rb","BAZEL_PATH": ctx.attr.bazel_path,
+            "BAZEL_WORKSPACE_ROOT": "$SRCROOT/%s" % script_dot_dots,
+            "BAZEL_STUBS_DIR": "$PROJECT_FILE_PATH/bazelstubs",
+            "BAZEL_INSTALLERS_DIR": "$PROJECT_FILE_PATH/bazelinstallers",
+            "BAZEL_INSTALLER": "$BAZEL_INSTALLERS_DIR/%s" % ctx.executable.installer.basename,
+            "BAZEL_EXECUTION_LOG_ENABLED": ctx.attr.bazel_execution_log_enabled,
+            "BAZEL_PROFILE_ENABLED": ctx.attr.bazel_profile_enabled,
+            "BAZEL_CONFIGS": ctx.attr.configs,
+            "BAZEL_ADDITIONAL_BAZEL_BUILD_OPTIONS": " ".join(["{} ".format(opt) for opt in ctx.attr.additional_bazel_build_options]),
+            "BAZEL_ADDITIONAL_LLDB_SETTINGS": "\n".join(ctx.attr.additional_lldb_settings),
+        })
+        # Stubbing compiler, linker executables used by xcode so no actual building happening on Xcode side
+        proj_settings_base.update({
+            "CC": "$BAZEL_STUBS_DIR/clang-stub",
+            "CXX": "$CC",
+            "CLANG_ANALYZER_EXEC": "$CC",
+            "LD": "$BAZEL_STUBS_DIR/ld-stub",
+            "LIBTOOL": "/usr/bin/true",
+            "SWIFT_EXEC": "$BAZEL_STUBS_DIR/swiftc-stub",
+            # LD isn't used for all use cases - direct it to use this LD
+            "OTHER_LDFLAGS": "-fuse-ld=$BAZEL_STUBS_DIR/ld-stub",
+        })
 
     # Change of settings to help params used for compiling individual files to match closer to Bazel
     proj_settings_base.update({
         "USE_HEADERMAP": False,
+        "SWIFT_VERSION": 5
     })
-
-    # Other misc. settings changes
-    proj_settings_base.update({
-        "CODE_SIGNING_ALLOWED": False,
-        "DEBUG_INFORMATION_FORMAT": "dwarf",
-        "DONT_RUN_SWIFT_STDLIB_TOOL": True,
-        "SWIFT_OBJC_INTERFACE_HEADER_NAME": "",
-        "SWIFT_VERSION": 5,
-    })
-
     # For debugging config only:
     proj_settings_debug = {
         "GCC_PREPROCESSOR_DEFINITIONS": "DEBUG",
@@ -971,6 +962,7 @@ def _xcodeproj_impl(ctx):
         fileGroups = project_file_groups,
     )
 
+    print(xcodegen_jsonfile)
     ctx.actions.write(xcodegen_jsonfile, xcodeproj_info.to_json())
     ctx.actions.run(
         executable = ctx.executable._xcodegen,
@@ -1121,6 +1113,7 @@ Additional LLDB settings to be added in each target's .lldbinit configuration fi
         """),
         "bazel_execution_log_enabled": attr.bool(default = False, mandatory = False),
         "bazel_profile_enabled": attr.bool(default = False, mandatory = False),
+        "xcode_native": attr.bool(default = False, mandatory = False),
     },
     executable = True,
 )
