@@ -10,7 +10,6 @@ load("@build_bazel_rules_swift//swift:swift.bzl", "SwiftInfo", "swift_common")
 load("//rules:library.bzl", "PrivateHeadersInfo", "apple_library")
 load("//rules:transition_support.bzl", "transition_support")
 load("//rules:providers.bzl", "FrameworkInfo")
-load("//rules:providers.bzl", "DepInfo")
 load("//rules/framework:vfs_overlay.bzl", "VFSOverlayInfo", "make_vfsoverlay")
 load("//rules:features.bzl", "feature_names")
 load("//rules:plists.bzl", "info_plists_by_setting")
@@ -204,7 +203,7 @@ def _get_virtual_framework_info(ctx, framework_files, compilation_context_fields
         modulemap = outputs.modulemap,
         swiftmodule = outputs.swiftmodule,
         swiftdoc = outputs.swiftdoc,
-    ), DepInfo(framework_deps = framework_deps)]
+    )]
 
 def _get_framework_files(ctx, deps):
     framework_name = ctx.attr.framework_name
@@ -556,7 +555,6 @@ def _apple_framework_packaging_impl(ctx):
     if virtualize_frameworks:
         infos = _get_virtual_framework_info(ctx, framework_files, compilation_context_fields, deps, transitive_deps, vfs)
         framework_info = infos[0]
-        dep_info = infos[1]
     else:
         framework_deps = []
         for dep in transitive_deps:
@@ -570,7 +568,6 @@ def _apple_framework_packaging_impl(ctx):
             swiftmodule = outputs.swiftmodule,
             swiftdoc = outputs.swiftdoc,
         )
-        dep_info = DepInfo(framework_deps = framework_deps)
 
         # If not virtualizing the framework - then it runs a "clean"
         _get_symlinked_framework_clean_action(ctx, framework_files, compilation_context_fields)
@@ -608,7 +605,6 @@ def _apple_framework_packaging_impl(ctx):
         cc_info,
         swift_info,
         default_info,
-        dep_info,
         AppleBundleInfo(
             archive = None,
             archive_root = None,

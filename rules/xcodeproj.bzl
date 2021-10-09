@@ -2,7 +2,6 @@
 
 load("@build_bazel_rules_apple//apple:providers.bzl", "AppleBundleInfo")
 load("//rules:providers.bzl", "FrameworkInfo")
-load("//rules:providers.bzl", "DepInfo")
 load("@build_bazel_rules_apple//apple/internal:platform_support.bzl", "platform_support")
 load("@build_bazel_rules_swift//swift:swift.bzl", "SwiftInfo")
 load("@bazel_skylib//lib:paths.bzl", "paths")
@@ -226,6 +225,22 @@ def _xcodeproj_aspect_impl(target, ctx):
         bazel_build_target_name = "@%s//" % target.label.workspace_name
     bazel_build_target_name += "%s:%s" % (target.label.package, target.label.name)
     bazel_bin_subdir = "%s/%s" % (target.label.workspace_root, target.label.package)
+
+    framework_deps = []
+    transitive_deps = []
+    for dep in deps:
+        if FrameworkInfo in dep:
+            framework_deps.append(dep)
+                
+    ## This target itself has no direct AppleFramework dependency, we will use it's childs
+    if len(framework_deps) == 0:
+        for dep in deps:
+            if _TargetInfo in dep:
+                if dep[_TargetInfo].framework_deps != None:
+                    transitive_deps.append(dep[_TargetInfo].framework_deps)
+
+    current_target_framework_deps = depset(framework_deps, transitive = transitive_deps)
+
     if AppleBundleInfo in target:
         swift_objc_header_path = None
         if SwiftInfo in target:
@@ -250,9 +265,6 @@ def _xcodeproj_aspect_impl(target, ctx):
                 test_host_appname = test_host_target[_TargetInfo].direct_targets[0].name
 
         framework_includes = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "framework_includes"))
-        framework_deps = []
-        if DepInfo in target:
-            framework_deps = target[DepInfo].framework_deps
         info = struct(
             name = bundle_info.bundle_name,
             bundle_id = bundle_info.bundle_id,
@@ -279,7 +291,7 @@ def _xcodeproj_aspect_impl(target, ctx):
             objc_copts = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "objc_copts")),
             commandline_args = commandline_args,
             targeted_device_family = _targeted_device_family(ctx),
-            deps = depset(framework_deps),
+            deps = depset(current_target_framework_deps),
         )
         if ctx.rule.kind != "apple_framework_packaging":
             providers.append(
@@ -311,7 +323,7 @@ def _xcodeproj_aspect_impl(target, ctx):
             direct_targets.extend(test_host_direct_targets)
             transitive_targets.extend(test_host_direct_targets)
         
-        target_info = _TargetInfo(direct_targets = direct_targets, targets = depset(transitive_targets, transitive = _get_attr_values_for_name(deps, _TargetInfo, "targets")))
+        target_info = _TargetInfo(direct_targets = direct_targets, targets = depset(transitive_targets, transitive = _get_attr_values_for_name(deps, _TargetInfo, "targets")), framework_deps = [])
         providers.append(target_info)
     else:
         srcs = []
@@ -373,8 +385,9 @@ def _xcodeproj_aspect_impl(target, ctx):
         else:
             targets = depset(transitive = _get_attr_values_for_name(deps, _TargetInfo, "targets"))
 
+        ## Non Framework dep, delegate framework_deps out.
         providers.append(
-            _TargetInfo(direct_targets = infos, targets = targets),
+            _TargetInfo(direct_targets = infos, targets = targets, framework_deps = current_target_framework_deps),
         )
 
     return providers
@@ -713,7 +726,7 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
             target_dependencies.append({"target": test_host_appname})
             target_settings["TEST_HOST"] = "$(BUILT_PRODUCTS_DIR)/{test_host_appname}.app/{test_host_appname}".format(test_host_appname = test_host_appname)
 
-        for target_dep_name in deps_target:
+        for target_dep_name in depset(deps_target).to_list():
             target_dependencies.append({"target": target_dep_name})
             
         if target_info.targeted_device_family:
