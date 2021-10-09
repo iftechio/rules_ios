@@ -9,8 +9,3 @@ FrameworkInfo = provider(
         "swiftdoc": " The Swift doc",
     },
 )
-DepInfo = provider(
-    fields = {
-        "framework_deps": "framework_deps, for xcode_native", 
-    }
-)
