@@ -378,11 +378,6 @@ def _xcodeproj_aspect_impl(target, ctx):
                 objc_copts.append(opts)
 
         swift_copts = []
-        if ctx.rule.kind == "swift_library":
-            for opts in ctx.rule.attr.copts:
-                if opts.find("$(execpath") != -1:
-                    break
-                swift_copts.append(opts) 
 
         for attr in _dir(ctx.rule.files):
             if attr == "srcs":
