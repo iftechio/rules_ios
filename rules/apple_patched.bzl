@@ -104,6 +104,7 @@ def _get_framework_info_providers(ctx, old_cc_info, old_objc_provider):
         modulemap = modulemap_list,
         swiftmodule = [],
         swiftdoc = [],
+        framework_deps = [],
     )
     return [framework_info]
 
