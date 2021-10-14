@@ -21,3 +21,10 @@ config_setting(
         "features": feature_names.virtualize_frameworks,
     },
 )
+
+config_setting(
+    name = "native_xcodeproj",
+    values = {
+        "features": feature_names.native_xcodeproj
+    }
+)

@@ -199,6 +199,10 @@ def _xcodeproj_aspect_impl(target, ctx):
     deps += getattr(ctx.rule.attr, "infoplists", [])
     tags = getattr(ctx.rule.attr, "tags", [])
 
+    if feature_names.native_xcodeproj in ctx.features:
+        if _IGNORE_AS_TARGET_TAG in tags:
+            return providers
+
     entitlements = getattr(ctx.rule.attr, "entitlements", None)
     if entitlements:
         deps.append(entitlements)
@@ -799,8 +803,9 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
             target_dependencies.append({"target": test_host_appname})
             target_settings["TEST_HOST"] = "$(BUILT_PRODUCTS_DIR)/{test_host_appname}.app/{test_host_appname}".format(test_host_appname = test_host_appname)
 
-        for target_dep_name in depset(deps_target).to_list():
-            target_dependencies.append({"target": target_dep_name})
+        if not feature_names.native_xcodeproj in ctx.features:
+            for target_dep_name in depset(deps_target).to_list():
+                target_dependencies.append({"target": target_dep_name})
             
         if target_info.targeted_device_family:
             target_settings["TARGETED_DEVICE_FAMILY"] = target_info.targeted_device_family
@@ -815,7 +820,7 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
                 "script": ctx.attr.additional_prebuild_script,
             })
 
-        if not ctx.attr.xcode_native:
+        if not feature_names.native_xcodeproj in ctx.features:
             pre_build_scripts.append({
                 "name": "Build with bazel",
                 "script": _BUILD_WITH_BAZEL_SCRIPT,
@@ -963,7 +968,7 @@ def _xcodeproj_impl(ctx):
     }
     
     proj_settings_base = {}
-    if not ctx.attr.xcode_native:
+    if not feature_names.native_xcodeproj in ctx.features:
         # User defined macro for Bazel only
         proj_settings_base.update({
             "BAZEL_BUILD_EXEC": "$BAZEL_STUBS_DIR/build-wrapper",
@@ -1193,7 +1198,6 @@ Additional LLDB settings to be added in each target's .lldbinit configuration fi
         """),
         "bazel_execution_log_enabled": attr.bool(default = False, mandatory = False),
         "bazel_profile_enabled": attr.bool(default = False, mandatory = False),
-        "xcode_native": attr.bool(default = False, mandatory = False),
     },
     executable = True,
 )
