@@ -203,7 +203,8 @@ def _get_virtual_framework_info(ctx, framework_files, compilation_context_fields
         modulemap = outputs.modulemap,
         swiftmodule = outputs.swiftmodule,
         swiftdoc = outputs.swiftdoc,
-    )]
+        framework_deps = framework_deps,
+        )]
 
 def _get_framework_files(ctx, deps):
     framework_name = ctx.attr.framework_name
@@ -568,6 +569,7 @@ def _apple_framework_packaging_impl(ctx):
             modulemap = outputs.modulemap,
             swiftmodule = outputs.swiftmodule,
             swiftdoc = outputs.swiftdoc,
+            framework_deps = framework_deps,
         )
 
         # If not virtualizing the framework - then it runs a "clean"

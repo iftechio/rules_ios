@@ -7,5 +7,6 @@ FrameworkInfo = provider(
         "modulemap": "The module map of the framework",
         "swiftmodule": "The swiftmodule",
         "swiftdoc": " The Swift doc",
+        "framework_deps": "framework_deps, for xcode_native",
     },
 )
