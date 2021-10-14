@@ -49,6 +49,12 @@ def apple_framework(name, apple_library = apple_library, **kwargs):
         "//conditions:default": None,
     }))
 
+    cxx_version = kwargs.pop("xcode_cxx_version", None)
+    if cxx_version:
+        xcconfig = {}
+        xcconfig['CLANG_CXX_LANGUAGE_STANDARD'] = cxx_version
+        framework_packaging_kwargs['xcconfig'] = xcconfig
+
     library = apple_library(name = name, **kwargs)
     apple_framework_packaging(
         name = name,
@@ -204,7 +210,7 @@ def _get_virtual_framework_info(ctx, framework_files, compilation_context_fields
         swiftmodule = outputs.swiftmodule,
         swiftdoc = outputs.swiftdoc,
         framework_deps = framework_deps,
-        )]
+    )]
 
 def _get_framework_files(ctx, deps):
     framework_name = ctx.attr.framework_name
@@ -569,7 +575,11 @@ def _apple_framework_packaging_impl(ctx):
             modulemap = outputs.modulemap,
             swiftmodule = outputs.swiftmodule,
             swiftdoc = outputs.swiftdoc,
+<<<<<<< HEAD
             framework_deps = framework_deps,
+=======
+            xcconfig = ctx.attr.xcconfig
+>>>>>>> 3b9628b (feat: xcodeproj gen)
         )
 
         # If not virtualizing the framework - then it runs a "clean"
@@ -723,6 +733,12 @@ the framework as a dependency.""",
                 fragment = "apple",
             ),
             doc = "The xcode config that is used to determine the deployment target for the current platform.",
+        ),
+        "xcconfig": attr.string_dict(
+            allow_empty = True,
+            mandatory = False,
+            default = {},
+            doc = """xcconfig used to generate xcodeproj""",
         ),
         "_allowlist_function_transition": attr.label(
             default = "@bazel_tools//tools/allowlists/function_transition_allowlist",

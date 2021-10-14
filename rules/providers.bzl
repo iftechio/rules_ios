@@ -8,5 +8,6 @@ FrameworkInfo = provider(
         "swiftmodule": "The swiftmodule",
         "swiftdoc": " The Swift doc",
         "framework_deps": "framework_deps, for xcode_native",
+        "xcconfig": "config for xcode",
     },
 )
