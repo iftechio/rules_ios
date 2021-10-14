@@ -575,11 +575,8 @@ def _apple_framework_packaging_impl(ctx):
             modulemap = outputs.modulemap,
             swiftmodule = outputs.swiftmodule,
             swiftdoc = outputs.swiftdoc,
-<<<<<<< HEAD
             framework_deps = framework_deps,
-=======
             xcconfig = ctx.attr.xcconfig
->>>>>>> 3b9628b (feat: xcodeproj gen)
         )
 
         # If not virtualizing the framework - then it runs a "clean"
