@@ -19,6 +19,7 @@ def _get_attr_values_for_name(deps, provider, field):
 
 _TargetInfo = provider()
 _SrcsInfo = provider()
+_XcodeProjectInfo = provider()
 
 _PLATFORM_MAPPING = {
     "ios": "iOS",
@@ -273,7 +274,14 @@ def _xcodeproj_aspect_impl(target, ctx):
 
         xcconfig = {}
         if FrameworkInfo in target:
-            xcconfig = target[FrameworkInfo].xcconfig
+            for k, v in target[FrameworkInfo].xcconfig:
+                xcconfig[k] = v
+
+        for dep in deps:
+            if _XcodeProjectInfo in dep:
+                bridging_header_path = dep[_XcodeProjectInfo].bridging_header_path
+                if bridging_header_path != None:
+                    xcconfig["SWIFT_OBJC_BRIDGING_HEADER"] = bridging_header_path
 
         framework_includes = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "framework_includes"))
         info = struct(
@@ -370,14 +378,28 @@ def _xcodeproj_aspect_impl(target, ctx):
                             project_hdrs.append(file)
 
         ## Collect objc copts
-        objc_copts = []
+        objc_copts = ["$(inherited)"]
         if ctx.rule.kind == "objc_library":
             for opts in ctx.rule.attr.copts:
                 if opts.find("$(execpath") != -1:
                     break
                 objc_copts.append(opts)
 
-        swift_copts = []
+        swift_copts = ["$(inherited)"]
+        bridging_header_path = None
+        if ctx.rule.kind == "swift_library":
+            next_opt_is_briding_header = False
+            for opts in ctx.rule.attr.copts:
+                if opts == "-import-objc-header":
+                    next_opt_is_briding_header = True
+                    continue
+                
+                if next_opt_is_briding_header:
+                    bridging_header = opts[len("$(execpath "):-1]
+                    for file in ctx.rule.files.swiftc_inputs:
+                        if file.is_source and bridging_header.endswith(file.basename):
+                            bridging_header_path = file.path
+                    break
 
         for attr in _dir(ctx.rule.files):
             if attr == "srcs":
@@ -443,6 +465,8 @@ def _xcodeproj_aspect_impl(target, ctx):
         providers.append(
             _TargetInfo(direct_targets = infos, targets = targets, framework_deps = current_target_framework_deps),
         )
+
+        providers.append(_XcodeProjectInfo(bridging_header_path = bridging_header_path))
 
     return providers
 
