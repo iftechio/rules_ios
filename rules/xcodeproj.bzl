@@ -242,7 +242,6 @@ def _xcodeproj_aspect_impl(target, ctx):
         for dep in deps:
             if FrameworkInfo in dep:
                 if _XcodeIgnoreInfo not in dep:
-                    print(dep)
                     framework_deps.append(dep)
         ## This target itself has no direct AppleFramework dependency, we will use it's childs
         if len(framework_deps) == 0:
@@ -288,6 +287,15 @@ def _xcodeproj_aspect_impl(target, ctx):
                     xcconfig["SWIFT_OBJC_BRIDGING_HEADER"] = bridging_header_path
 
         framework_includes = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "framework_includes"))
+
+        asset_srcs = []
+        for attr in _dir(ctx.rule.files):
+            if attr == "srcs" or attr == "non_arc_srcs":
+                continue
+            else:
+                asset_srcs += getattr(ctx.rule.files, attr, [])
+        asset_srcs = [f for f in asset_srcs if _is_current_project_file(f)]
+
         info = struct(
             name = bundle_info.bundle_name,
             bundle_id = bundle_info.bundle_id,
@@ -297,7 +305,7 @@ def _xcodeproj_aspect_impl(target, ctx):
             bazel_bin_subdir = bazel_bin_subdir,
             srcs = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "srcs")),
             non_arc_srcs = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "non_arc_srcs")),
-            asset_srcs = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "asset_srcs")),
+            asset_srcs = depset(asset_srcs, transitive = _get_attr_values_for_name(deps, _SrcsInfo, "asset_srcs")),
             framework_includes = framework_includes,
             cc_defines = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "cc_defines")),
             swift_defines = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "swift_defines")),
@@ -650,6 +658,7 @@ def _gather_asset_sources(target_info, path_prefix):
     catalog_groups = {}
 
     for s in target_info.asset_srcs.to_list():
+        print(s)
         short_path = s.short_path
         (extension, path_so_far) = _classify_asset(short_path)
 
