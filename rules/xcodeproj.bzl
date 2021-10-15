@@ -20,6 +20,7 @@ def _get_attr_values_for_name(deps, provider, field):
 _TargetInfo = provider()
 _SrcsInfo = provider()
 _XcodeProjectInfo = provider()
+_XcodeIgnoreInfo = provider()
 
 _PLATFORM_MAPPING = {
     "ios": "iOS",
@@ -202,6 +203,7 @@ def _xcodeproj_aspect_impl(target, ctx):
 
     if feature_names.native_xcodeproj in ctx.features:
         if _IGNORE_AS_TARGET_TAG in tags:
+            providers.append(_XcodeIgnoreInfo())
             return providers
 
     entitlements = getattr(ctx.rule.attr, "entitlements", None)
@@ -236,16 +238,18 @@ def _xcodeproj_aspect_impl(target, ctx):
 
     framework_deps = []
     transitive_deps = []
-    for dep in deps:
-        if FrameworkInfo in dep:
-            framework_deps.append(dep)
-                
-    ## This target itself has no direct AppleFramework dependency, we will use it's childs
-    if len(framework_deps) == 0:
+    if _IGNORE_AS_TARGET_TAG not in tags:
         for dep in deps:
-            if _TargetInfo in dep:
-                if dep[_TargetInfo].framework_deps != None:
-                    transitive_deps.append(dep[_TargetInfo].framework_deps)
+            if FrameworkInfo in dep:
+                if _XcodeIgnoreInfo not in dep:
+                    print(dep)
+                    framework_deps.append(dep)
+        ## This target itself has no direct AppleFramework dependency, we will use it's childs
+        if len(framework_deps) == 0:
+            for dep in deps:
+                if _TargetInfo in dep:
+                    if dep[_TargetInfo].framework_deps != None:
+                        transitive_deps.append(dep[_TargetInfo].framework_deps)
 
     current_target_framework_deps = depset(framework_deps, transitive = transitive_deps)
 
@@ -822,7 +826,7 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
             target_dependencies.append({"target": test_host_appname})
             target_settings["TEST_HOST"] = "$(BUILT_PRODUCTS_DIR)/{test_host_appname}.app/{test_host_appname}".format(test_host_appname = test_host_appname)
 
-        if not feature_names.native_xcodeproj in ctx.features:
+        if feature_names.native_xcodeproj in ctx.features:
             for target_dep_name in depset(deps_target).to_list():
                 target_dependencies.append({"target": target_dep_name})
             
