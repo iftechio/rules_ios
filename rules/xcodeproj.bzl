@@ -658,7 +658,6 @@ def _gather_asset_sources(target_info, path_prefix):
     catalog_groups = {}
 
     for s in target_info.asset_srcs.to_list():
-        print(s)
         short_path = s.short_path
         (extension, path_so_far) = _classify_asset(short_path)
 
@@ -898,17 +897,28 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
 
         # See https://github.com/yonaskolb/XcodeGen/blob/master/Docs/ProjectSpec.md#scheme
         # on structure of xcodeproj_schemes_by_name[target_info.name]
-        xcodeproj_schemes_by_name[target_name] = {
-            "build": {
-                "parallelizeBuild": False,
-                "buildImplicitDependencies": False,
-                "targets": {
-                    target_name: ["run", "test", "profile"],
+        if feature_names.native_xcodeproj in ctx.features:
+            xcodeproj_schemes_by_name[target_name] = {
+                "build": {
+                    "targets": {
+                        target_name: ["run", "test", "profile"],
+                    },
                 },
-            },
-            # By putting under run action, test action will just use them automatically
-            "run": scheme_action_details,
-        }
+                # By putting under run action, test action will just use them automatically
+                "run": scheme_action_details,
+            }
+        else:
+            xcodeproj_schemes_by_name[target_name] = {
+                "build": {
+                    "parallelizeBuild": False,
+                    "buildImplicitDependencies": False,
+                    "targets": {
+                        target_name: ["run", "test", "profile"],
+                    },
+                },
+                # By putting under run action, test action will just use them automatically
+                "run": scheme_action_details,
+            }
 
         scheme_infos = [target[AdditionalSchemeInfo] for target in ctx.attr.additional_scheme_infos]
         build_target_to_scheme_info = {scheme_info.build_target: scheme_info for scheme_info in scheme_infos}
