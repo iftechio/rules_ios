@@ -52,8 +52,8 @@ def apple_framework(name, apple_library = apple_library, **kwargs):
     cxx_version = kwargs.pop("xcode_cxx_version", None)
     if cxx_version:
         xcconfig = {}
-        xcconfig['CLANG_CXX_LANGUAGE_STANDARD'] = cxx_version
-        framework_packaging_kwargs['xcconfig'] = xcconfig
+        xcconfig["CLANG_CXX_LANGUAGE_STANDARD"] = cxx_version
+        framework_packaging_kwargs["xcconfig"] = xcconfig
 
     library = apple_library(name = name, **kwargs)
     apple_framework_packaging(
@@ -170,7 +170,7 @@ def _get_virtual_framework_info(ctx, framework_files, compilation_context_fields
         # transitive headers
         if CcInfo in dep:
             compilation_context = dep[CcInfo].compilation_context
-            propagated_interface_headers.append(compilation_context.headers
+            propagated_interface_headers.append(compilation_context.headers)
         if FrameworkInfo in dep:
             framework_deps.append(dep)
             framework_info = dep[FrameworkInfo]
@@ -571,7 +571,7 @@ def _apple_framework_packaging_impl(ctx):
             swiftmodule = outputs.swiftmodule,
             swiftdoc = outputs.swiftdoc,
             framework_deps = framework_deps,
-            xcconfig = ctx.attr.xcconfig
+            xcconfig = ctx.attr.xcconfig,
         )
 
         # If not virtualizing the framework - then it runs a "clean"
