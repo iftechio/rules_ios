@@ -4,6 +4,7 @@ load(
     "@bazel_tools//tools/build_defs/repo:http.bzl",
     "http_archive",
 )
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "new_git_repository")
 
 def _maybe(repo_rule, name, **kwargs):
     """Executes the given repository rule if it hasn't been executed already.
@@ -49,10 +50,10 @@ def rules_ios_dependencies():
     _maybe(
         github_repo,
         name = "build_bazel_rules_apple",
-        ref = "3baff5b829177f8007619d1f16971761d68a64e1",
+        ref = "d1d40821dc932ee488eb22c0b9712e26f39c04fa",
         project = "bazelbuild",
         repo = "rules_apple",
-        sha256 = "2d4b0b1616cb7a7fe5d35dfbd1c813c5ae216169ff34c7a81f7a85f1b99a9cf2",
+        sha256 = "159a100b4dd6a9debb8e514abc3c0d929285d329741772406604c23393464b5f",
     )
 
     _maybe(
@@ -82,4 +83,20 @@ native_binary(
         canonical_id = "xcodegen-2.25.0",
         strip_prefix = "xcodegen",
         urls=["https://github.com/yonaskolb/XcodeGen/releases/download/2.25.0/xcodegen.zip"],
+    )
+
+    _maybe(
+        new_git_repository,
+        name = "arm64-to-sim",
+        remote = "https://github.com/bogo/arm64-to-sim.git",
+        commit = "25599a28689fa42679f23eb0ff031ebe57d3bb9b",
+        build_file_content = """
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_binary")
+
+swift_binary(
+    name = "arm64-to-sim",
+    srcs = glob(["Sources/arm64-to-sim/*.swift"]),
+    visibility = ["//visibility:public"],
+)
+        """,
     )

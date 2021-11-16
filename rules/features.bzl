@@ -3,4 +3,7 @@ feature_names = struct(
     virtualize_frameworks = "apple.virtualize_frameworks",
     # Generate xcodeproj which do not need bazel to build.
     native_xcodeproj = "native_xcodeproj",
+
+    # Use the ARM deps for the simulator - see rules/import_middleman.bzl
+    arm_simulator_use_device_deps = "apple.arm_simulator_use_device_deps",
 )
