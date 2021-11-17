@@ -496,6 +496,7 @@ def _native_xcodeproj_ascpect_impl(target, ctx):
         framework_deps = []
         transitive_framework_deps = []
         swift_objc_header_path = None
+        resources = []
         if SwiftInfo in target:
             for h in target[apple_common.Objc].direct_headers:
                 if h.path.endswith("-Swift.h"):
@@ -510,6 +511,10 @@ def _native_xcodeproj_ascpect_impl(target, ctx):
                 framework_deps.append(info[XcodeTargetInfo])
         for framework in framework_deps:
             transitive_framework_deps.append(framework.framework_deps)
+
+        for resource in ctx.rule.attr.resources:
+            if _SrcsInfo in info:
+                resources.append(depset(resource[_SrcsInfo].srcs))
 
         bundle_info = target[AppleBundleInfo]
 
@@ -530,6 +535,12 @@ def _native_xcodeproj_ascpect_impl(target, ctx):
             if test_host_target:
                 test_host_appname = test_host_target[XcodeTargetInfo].bundle_info.name
 
+        mach_o_type = None
+        if bundle_info.product_type[_PRODUCT_SPECIFIER_LENGTH:] == "framework":
+            mach_o_type = "staticlib"
+            if apple_common.AppleDynamicFramework in target:
+                mach_o_type = "mh_dylib"
+
         bundle_info_for_xcode = struct(
             name = bundle_info.bundle_name,
             bundle_id = bundle_info.bundle_id,
@@ -541,9 +552,16 @@ def _native_xcodeproj_ascpect_impl(target, ctx):
             env_vars = env_vars,
             commandlines_args = commandlines_args,
             swift_objc_header_path = swift_objc_header_path,
+            mach_o_type = mach_o_type,
             targeted_device_family = _targeted_device_family(ctx),
         )
-        providers.append(XcodeTargetInfo(src_infos = src_infos, project_infos = project_infos, framework_deps = depset(framework_deps, transitive = transitive_framework_deps), bundle_info = bundle_info_for_xcode))
+        providers.append(XcodeTargetInfo(
+            src_infos = src_infos,
+            project_infos = project_infos,
+            framework_deps = depset(framework_deps, transitive = transitive_framework_deps),
+            bundle_info = bundle_info_for_xcode,
+            resources = depset([], transitive = resources),
+        ))
     else:
         for info in collect_src_info(target, ctx):
             providers.append(info)
@@ -724,7 +742,7 @@ def _gather_asset_sources(target_info, path_prefix):
     datamodel_groups = {}
     catalog_groups = {}
 
-    for s in target_info.asset_srcs.to_list():
+    for s in target_info.resources.to_list():
         short_path = s.short_path
         (extension, path_so_far) = _classify_asset(short_path)
 
@@ -770,13 +788,6 @@ def _gather_asset_sources(target_info, path_prefix):
         }
         asset_sources.append(payload)
 
-    # Append BUILD.bazel files to project
-    asset_sources += [{
-        "path": paths.join(path_prefix, p),
-        "optional": True,
-        "buildPhase": "none",
-        # TODO: add source language type once https://github.com/yonaskolb/XcodeGen/issues/850 is resolved
-    } for p in target_info.build_files.to_list()]
     return asset_sources
 
 _CONFLICTING_TARGET_MSG = """\
@@ -837,13 +848,13 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
                 fail(_CONFLICTING_TARGET_MSG.format(ctx.label, target_name, existing_type, target_info.bazel_build_target_name, target_info.product_type))
 
         ## Dynamic lib
-        target_macho_type = "staticlib" if product_type == "framework" else "$(inherited)"
+        target_macho_type = target_info.bundle_info.mach_o_type if target_info.bundle_info.mach_o_type else "$(inherited)"
         compiled_sources = []
         compiled_non_arc_sources = []
         project_headers = []
         public_headers = []
         private_headers = []
-        asset_sources = []
+        asset_sources = _gather_asset_sources(target_info, src_dot_dots)
         for src_info in target_info.src_infos:
             compiled_sources += [{
                 "path": paths.join(src_dot_dots, s.short_path),
