@@ -528,6 +528,11 @@ def _native_xcodeproj_ascpect_impl(target, ctx):
         test_host_appname = None
         env_vars = ()
         commandlines_args = ()
+
+        app_icon = None
+        if bundle_info.product_type[_PRODUCT_SPECIFIER_LENGTH:] == "application":
+            app_icon = app_icon_name(ctx.rule.attr.app_icons[0][DefaultInfo].files.to_list()[0].path)
+
         if ctx.rule.kind == "ios_unit_test":
             # The following converts {"env_k1": "env_v1", "env_k2": "env_v2"}
             # to (("env_k1", "env_v1"), ("env_k2", "env_v2"))
@@ -560,6 +565,7 @@ def _native_xcodeproj_ascpect_impl(target, ctx):
             swift_objc_header_path = swift_objc_header_path,
             mach_o_type = mach_o_type,
             infoplists = infoplists,
+            app_icon = app_icon,
             targeted_device_family = _targeted_device_family(ctx),
         )
         providers.append(XcodeTargetInfo(
@@ -703,6 +709,7 @@ _XCDATAMODELD = "xcdatamodeld"
 _XCDATAMODEL = "xcdatamodel"
 _XCMAPPINGMODEL = "xcmappingmodel"
 _XCSTICKERS = "xcstickers"
+_APPICON = "appiconset"
 
 def _classify_asset(path):
     """Helper method to identify known extesion via the passed in path
@@ -734,6 +741,14 @@ def _classify_asset(path):
 
     # No match, return None and complete path
     return (None, path_so_far)
+
+def app_icon_name(path):
+    extension = _APPICON
+    path_components = path.split("/")
+    for component in path_components:
+        if component.endswith(extension):
+            return component[:-(len(extension) + 1)]
+    return None
 
 def _gather_asset_sources(target_info, path_prefix):
     """Helper method gather asset sources (non-code resources) based on its type or special names
@@ -902,6 +917,9 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
             # "BAZEL_BUILD_TARGET_WORKSPACE": target_info.bazel_build_target_workspace,
             "USE_HEADERMAP": "YES",
         }
+        if target_info.bundle_info.product_type == "application":
+            target_settings["ASSETCATALOG_COMPILER_APPICON_NAME"] = target_info.bundle_info.app_icon
+
         macros = ["\"%s\"" % d for d in get_info_depset(target_info.src_infos, "cc_defines").to_list()]
         macros.append("$(inherited)")
         target_settings["GCC_PREPROCESSOR_DEFINITIONS"] = " ".join(macros)
