@@ -497,6 +497,12 @@ def _native_xcodeproj_ascpect_impl(target, ctx):
         transitive_framework_deps = []
         swift_objc_header_path = None
         resources = []
+
+        infoplists_depset = []
+        for infoplist_target in ctx.rule.attr.infoplists:
+            infoplists_depset.append(infoplist_target[DefaultInfo].files)
+        infoplists = depset([], transitive = infoplists_depset).to_list()
+
         if SwiftInfo in target:
             for h in target[apple_common.Objc].direct_headers:
                 if h.path.endswith("-Swift.h"):
@@ -553,6 +559,7 @@ def _native_xcodeproj_ascpect_impl(target, ctx):
             commandlines_args = commandlines_args,
             swift_objc_header_path = swift_objc_header_path,
             mach_o_type = mach_o_type,
+            infoplists = infoplists,
             targeted_device_family = _targeted_device_family(ctx),
         )
         providers.append(XcodeTargetInfo(
@@ -834,7 +841,6 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
     xcodeproj_targets_by_name = {}
     xcodeproj_schemes_by_name = {}
     for target_info in targets:
-        print(target_info)
         deps_target = []
         for dep in target_info.framework_deps.to_list():
             deps_target.append(dep.bundle_info.name)
@@ -855,6 +861,10 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
         public_headers = []
         private_headers = []
         asset_sources = _gather_asset_sources(target_info, src_dot_dots)
+        infoplists = [{
+            "path": paths.join(src_dot_dots, s.short_path),
+            "optional": True,
+        } for s in target_info.bundle_info.infoplists]
         for src_info in target_info.src_infos:
             compiled_sources += [{
                 "path": paths.join(src_dot_dots, s.short_path),
@@ -946,7 +956,7 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
             })
 
         xcodeproj_targets_by_name[target_name] = {
-            "sources": compiled_sources + compiled_non_arc_sources + asset_sources + project_headers + public_headers + private_headers,
+            "sources": compiled_sources + compiled_non_arc_sources + asset_sources + project_headers + public_headers + private_headers + infoplists,
             "type": product_type,
             "platform": _PLATFORM_MAPPING[target_info.bundle_info.platform_type],
             "deploymentTarget": target_info.bundle_info.minimum_os_version,
