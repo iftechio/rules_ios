@@ -513,7 +513,7 @@ def _native_xcodeproj_ascpect_impl(target, ctx):
             transitive_framework_deps.append(framework.framework_deps)
 
         for resource in ctx.rule.attr.resources:
-            if _SrcsInfo in info:
+            if _SrcsInfo in resource:
                 resources.append(depset(resource[_SrcsInfo].srcs))
 
         bundle_info = target[AppleBundleInfo]
