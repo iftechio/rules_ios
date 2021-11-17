@@ -774,7 +774,7 @@ def _gather_asset_sources(target_info, path_prefix):
             payload = {
                 "path": paths.join(path_prefix, short_path),
                 "optional": True,
-                "buildPhase": "none",
+                "buildPhase": "resources",
             }
             asset_sources.append(payload)
         elif extension in [_XCASSETS, _XCSTICKERS]:
@@ -806,7 +806,7 @@ def _gather_asset_sources(target_info, path_prefix):
         payload = {
             "path": paths.join(path_prefix, asset_key),
             "optional": True,
-            "buildPhase": "none",
+            "buildPhase": "resources",
         }
         asset_sources.append(payload)
 
