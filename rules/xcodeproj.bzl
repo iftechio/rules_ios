@@ -214,7 +214,7 @@ def _xcodeproj_aspect_impl(target, ctx):
     if virtualize_frameworks:
         # Effectivly for virtual frameworks we don't need to copy the files
         # because they are read directly from the VFS
-        objc_copts = _xcodeproj_aspect_collect_swift_copts(deps, target, ctx) 
+        objc_copts = _xcodeproj_aspect_collect_swift_copts(deps, target, ctx)
         swift_copts = _xcodeproj_aspect_collect_swift_copts(deps, target, ctx)
         hmap_paths = []
     else:
@@ -243,6 +243,7 @@ def _xcodeproj_aspect_impl(target, ctx):
             if FrameworkInfo in dep:
                 if _XcodeIgnoreInfo not in dep:
                     framework_deps.append(dep)
+
         ## This target itself has no direct AppleFramework dependency, we will use it's childs
         if len(framework_deps) == 0:
             for dep in deps:
@@ -326,7 +327,7 @@ def _xcodeproj_aspect_impl(target, ctx):
             public_hdrs = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "public_hdrs")),
             private_hdrs = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "private_hdrs")),
             project_hdrs = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "project_hdrs")),
-            xcconfig = depset(xcconfig.items())
+            xcconfig = depset(xcconfig.items()),
         )
         if ctx.rule.kind != "apple_framework_packaging":
             providers.append(
@@ -359,132 +360,198 @@ def _xcodeproj_aspect_impl(target, ctx):
             test_host_direct_targets = test_host_target[_TargetInfo].direct_targets
             direct_targets.extend(test_host_direct_targets)
             transitive_targets.extend(test_host_direct_targets)
-        
+
         target_info = _TargetInfo(direct_targets = direct_targets, targets = depset(transitive_targets, transitive = _get_attr_values_for_name(deps, _TargetInfo, "targets")), framework_deps = [])
         providers.append(target_info)
     else:
-        srcs = []
-        non_arc_srcs = []
-        asset_srcs = []
+        infos = collect_src_info(target, ctx)
+        for info in infos:
+            providers.append(info)
+    return providers
 
-        private_hdrs = []
-        public_hdrs = []
-        project_hdrs = []
+XcodeTargetInfo = provider()
 
-        ## Collect headers
-        if ctx.rule.kind == "headermap":
-            if ctx.rule.attr.name.endswith("private_hmap"):
-                for filegroup in ctx.rule.attr.hdrs:
-                    for file in filegroup.files.to_list():
-                        if file.is_source:
-                            private_hdrs.append(file)
-            if ctx.rule.attr.name.endswith("public_hmap"):
-                for filegroup in ctx.rule.attr.hdrs:
-                    for file in filegroup.files.to_list():
-                        if file.is_source:
-                            public_hdrs.append(file) 
-            if ctx.rule.attr.name.endswith("project_hmap"):
-                for filegroup in ctx.rule.attr.hdrs:
-                    for file in filegroup.files.to_list():
-                        if file.is_source:
-                            project_hdrs.append(file)
+def collect_src_info(target, ctx):
+    deps = []
+    deps += getattr(ctx.rule.attr, "deps", [])
+    providers = []
+    srcs = []
+    non_arc_srcs = []
 
-        ## Collect objc copts
-        objc_copts = ["$(inherited)"]
-        if ctx.rule.kind == "objc_library":
-            for opts in ctx.rule.attr.copts:
-                if opts.find("$(execpath") != -1:
-                    break
-                objc_copts.append(opts)
+    private_hdrs = []
+    public_hdrs = []
+    project_hdrs = []
 
-        swift_copts = ["$(inherited)"]
-        bridging_header_path = None
-        if ctx.rule.kind == "swift_library":
-            next_opt_is_briding_header = False
-            for opts in ctx.rule.attr.copts:
-                if opts == "-import-objc-header":
-                    next_opt_is_briding_header = True
-                    continue
-                
-                if next_opt_is_briding_header:
-                    bridging_header = opts[len("$(execpath "):-1]
-                    for file in ctx.rule.files.swiftc_inputs:
-                        if file.is_source and bridging_header.endswith(file.basename):
-                            bridging_header_path = file.path
-                    break
+    ## Collect headers
+    if ctx.rule.kind == "headermap":
+        if ctx.rule.attr.name.endswith("private_hmap"):
+            for filegroup in ctx.rule.attr.hdrs:
+                for file in filegroup.files.to_list():
+                    if file.is_source:
+                        private_hdrs.append(file)
+        if ctx.rule.attr.name.endswith("public_hmap"):
+            for filegroup in ctx.rule.attr.hdrs:
+                for file in filegroup.files.to_list():
+                    if file.is_source:
+                        public_hdrs.append(file)
+        if ctx.rule.attr.name.endswith("project_hmap"):
+            for filegroup in ctx.rule.attr.hdrs:
+                for file in filegroup.files.to_list():
+                    if file.is_source:
+                        project_hdrs.append(file)
 
-        for attr in _dir(ctx.rule.files):
-            if attr == "srcs":
-                srcs += getattr(ctx.rule.files, attr, [])
-            elif attr == "non_arc_srcs":
-                non_arc_srcs += getattr(ctx.rule.files, attr, [])
-            else:
-                asset_srcs += getattr(ctx.rule.files, attr, [])
-        srcs = [f for f in srcs if _is_current_project_source_file(f)]
-        non_arc_srcs = [f for f in non_arc_srcs if _is_current_project_source_file(f)]
-        asset_srcs = [f for f in asset_srcs if _is_current_project_file(f)]
-        framework_includes = _get_attr_values_for_name(deps, _SrcsInfo, "framework_includes")
-        cc_defines = _get_attr_values_for_name(deps, _SrcsInfo, "cc_defines")
-        swift_defines = _get_attr_values_for_name(deps, _SrcsInfo, "swift_defines")
-        if CcInfo in target:
-            framework_includes.append(target[CcInfo].compilation_context.framework_includes)
-            cc_defines.append(target[CcInfo].compilation_context.defines)
+    ## Collect objc copts
+    objc_copts = ["$(inherited)"]
+    if ctx.rule.kind == "objc_library":
+        for opts in ctx.rule.attr.copts:
+            if opts.find("$(execpath") != -1:
+                break
+            objc_copts.append(opts)
 
-        swift_module_paths = []
+    swift_copts = ["$(inherited)"]
+    bridging_header_path = None
+    if ctx.rule.kind == "swift_library":
+        next_opt_is_briding_header = False
+        for opts in ctx.rule.attr.copts:
+            if opts == "-import-objc-header":
+                next_opt_is_briding_header = True
+                continue
+
+            if next_opt_is_briding_header:
+                bridging_header = opts[len("$(execpath "):-1]
+                for file in ctx.rule.files.swiftc_inputs:
+                    if file.is_source and bridging_header.endswith(file.basename):
+                        bridging_header_path = file.path
+                break
+
+    for attr in _dir(ctx.rule.files):
+        if attr == "srcs":
+            srcs += getattr(ctx.rule.files, attr, [])
+        elif attr == "non_arc_srcs":
+            non_arc_srcs += getattr(ctx.rule.files, attr, [])
+    srcs = [f for f in srcs if _is_current_project_source_file(f)]
+    non_arc_srcs = [f for f in non_arc_srcs if _is_current_project_source_file(f)]
+    framework_includes = _get_attr_values_for_name(deps, _SrcsInfo, "framework_includes")
+    cc_defines = _get_attr_values_for_name(deps, _SrcsInfo, "cc_defines")
+    swift_defines = _get_attr_values_for_name(deps, _SrcsInfo, "swift_defines")
+    if CcInfo in target:
+        framework_includes.append(target[CcInfo].compilation_context.framework_includes)
+        cc_defines.append(target[CcInfo].compilation_context.defines)
+
+    swift_module_paths = []
+    if SwiftInfo in target:
+        swift_info = target[SwiftInfo]
+        swift_defines.append(depset(_collect_swift_defines(swift_info.direct_modules)))
+        swift_defines.append(depset(_collect_swift_defines(swift_info.transitive_modules.to_list())))
+        swift_module_paths = [m.swift.swiftmodule.path for m in target[SwiftInfo].direct_modules]
+
+    providers.append(
+        _SrcsInfo(
+            srcs = depset(srcs, transitive = _get_attr_values_for_name(deps, _SrcsInfo, "srcs")),
+            non_arc_srcs = depset(non_arc_srcs, transitive = _get_attr_values_for_name(deps, _SrcsInfo, "non_arc_srcs")),
+            framework_includes = depset([], transitive = framework_includes),
+            cc_defines = depset([], transitive = cc_defines),
+            build_files = depset(_srcs_info_build_files(ctx), transitive = _get_attr_values_for_name(deps, _SrcsInfo, "build_files")),
+            swift_defines = depset([], transitive = swift_defines),
+            direct_srcs = srcs,
+            hmap_paths = depset([]),
+            swift_copts = depset(swift_copts),
+            objc_copts = depset(objc_copts),
+            swift_module_paths = depset(swift_module_paths, transitive = _get_attr_values_for_name(deps, _SrcsInfo, "swift_module_paths")),
+            public_hdrs = depset(public_hdrs, transitive = _get_attr_values_for_name(deps, _SrcsInfo, "public_hdrs")),
+            private_hdrs = depset(private_hdrs, transitive = _get_attr_values_for_name(deps, _SrcsInfo, "private_hdrs")),
+            project_hdrs = depset(project_hdrs, transitive = _get_attr_values_for_name(deps, _SrcsInfo, "project_hdrs")),
+        ),
+    )
+
+    infos = None
+    actual = None
+    if ctx.rule.kind in ("test_suite"):
+        actual = getattr(ctx.rule.attr, "tests")[0]
+    elif ctx.rule.kind in ("alias"):
+        actual = getattr(ctx.rule.attr, "actual")
+
+    if actual and _TargetInfo in actual:
+        infos = actual[_TargetInfo].direct_targets
+
+    targets = None
+    if infos:
+        targets = depset(infos, transitive = _get_attr_values_for_name(deps, _TargetInfo, "targets"))
+    else:
+        targets = depset(transitive = _get_attr_values_for_name(deps, _TargetInfo, "targets"))
+
+    providers.append(_XcodeProjectInfo(bridging_header_path = bridging_header_path))
+    return providers
+
+def _native_xcodeproj_ascpect_impl(target, ctx):
+    providers = []
+    if FrameworkInfo in target:
+        ## ignore AppleFramework
+        return providers
+
+    if AppleBundleInfo in target:
+        ## This target is a bundle target, we need resources info from itself, source info from it deps
+        src_infos = []
+        project_infos = []
+        framework_deps = []
+        transitive_framework_deps = []
+        swift_objc_header_path = None
         if SwiftInfo in target:
-            swift_info = target[SwiftInfo]
-            swift_defines.append(depset(_collect_swift_defines(swift_info.direct_modules)))
-            swift_defines.append(depset(_collect_swift_defines(swift_info.transitive_modules.to_list())))
-            swift_module_paths = [m.swift.swiftmodule.path for m in target[SwiftInfo].direct_modules]
+            for h in target[apple_common.Objc].direct_headers:
+                if h.path.endswith("-Swift.h"):
+                    swift_objc_header_path = h.path
+        for info in ctx.rule.attr.deps:
+            if _SrcsInfo in info:
+                src_infos.append(info[_SrcsInfo])
+            elif _XcodeProjectInfo in info:
+                project_infos.append(info[_XcodeProjectInfo])
+        for info in ctx.rule.attr.frameworks:
+            if XcodeTargetInfo in info:
+                framework_deps.append(info[XcodeTargetInfo])
+        for framework in framework_deps:
+            transitive_framework_deps.append(framework.framework_deps)
 
-        providers.append(
-            _SrcsInfo(
-                srcs = depset(srcs, transitive = _get_attr_values_for_name(deps, _SrcsInfo, "srcs")),
-                non_arc_srcs = depset(non_arc_srcs, transitive = _get_attr_values_for_name(deps, _SrcsInfo, "non_arc_srcs")),
-                asset_srcs = depset(asset_srcs, transitive = _get_attr_values_for_name(deps, _SrcsInfo, "asset_srcs")),
-                framework_includes = depset([], transitive = framework_includes),
-                cc_defines = depset([], transitive = cc_defines),
-                build_files = depset(_srcs_info_build_files(ctx), transitive = _get_attr_values_for_name(deps, _SrcsInfo, "build_files")),
-                swift_defines = depset([], transitive = swift_defines),
-                direct_srcs = srcs,
-                hmap_paths = depset(hmap_paths),
-                swift_copts = depset(swift_copts),
-                objc_copts = depset(objc_copts),
-                swift_module_paths = depset(swift_module_paths, transitive = _get_attr_values_for_name(deps, _SrcsInfo, "swift_module_paths")),
-                public_hdrs = depset(public_hdrs, transitive = _get_attr_values_for_name(deps, _SrcsInfo, "public_hdrs")),
-                private_hdrs = depset(private_hdrs, transitive = _get_attr_values_for_name(deps, _SrcsInfo, "private_hdrs")),
-                project_hdrs = depset(project_hdrs, transitive = _get_attr_values_for_name(deps, _SrcsInfo, "project_hdrs")),
-            ),
+        bundle_info = target[AppleBundleInfo]
+
+        test_host_target = None
+        test_host_appname = None
+        env_vars = ()
+        commandlines_args = ()
+        if ctx.rule.kind == "ios_unit_test":
+            # The following converts {"env_k1": "env_v1", "env_k2": "env_v2"}
+            # to (("env_k1", "env_v1"), ("env_k2", "env_v2"))
+            # for both "env vars" and "command line args"
+            env_key_value_pairs = getattr(ctx.rule.attr, "env", {})
+            env_vars = tuple(env_key_value_pairs.items())
+            commandlines_args = getattr(ctx.rule.attr, "args", [])
+            commandline_args = tuple(commandlines_args)
+
+            test_host_target = getattr(ctx.rule.attr, "test_host", None)
+            if test_host_target:
+                test_host_appname = test_host_target[XcodeTargetInfo].bundle_info.name
+
+        bundle_info_for_xcode = struct(
+            name = bundle_info.bundle_name,
+            bundle_id = bundle_info.bundle_id,
+            bundle_extension = bundle_info.bundle_extension,
+            product_type = bundle_info.product_type[_PRODUCT_SPECIFIER_LENGTH:],
+            platform_type = bundle_info.platform_type,
+            minimum_os_version = bundle_info.minimum_os_version,
+            test_host_appname = test_host_appname,
+            env_vars = env_vars,
+            commandlines_args = commandlines_args,
+            swift_objc_header_path = swift_objc_header_path,
+            targeted_device_family = _targeted_device_family(ctx),
         )
-
-        infos = None
-        actual = None
-        if ctx.rule.kind in ("test_suite"):
-            actual = getattr(ctx.rule.attr, "tests")[0]
-        elif ctx.rule.kind in ("alias"):
-            actual = getattr(ctx.rule.attr, "actual")
-
-        if actual and _TargetInfo in actual:
-            infos = actual[_TargetInfo].direct_targets
-
-        targets = None
-        if infos:
-            targets = depset(infos, transitive = _get_attr_values_for_name(deps, _TargetInfo, "targets"))
-        else:
-            targets = depset(transitive = _get_attr_values_for_name(deps, _TargetInfo, "targets"))
-
-        ## Non Framework dep, delegate framework_deps out.
-        providers.append(
-            _TargetInfo(direct_targets = infos, targets = targets, framework_deps = current_target_framework_deps),
-        )
-
-        providers.append(_XcodeProjectInfo(bridging_header_path = bridging_header_path))
-
+        providers.append(XcodeTargetInfo(src_infos = src_infos, project_infos = project_infos, framework_deps = depset(framework_deps, transitive = transitive_framework_deps), bundle_info = bundle_info_for_xcode))
+    else:
+        for info in collect_src_info(target, ctx):
+            providers.append(info)
     return providers
 
 _xcodeproj_aspect = aspect(
-    implementation = _xcodeproj_aspect_impl,
-    attr_aspects = ["deps", "actual", "tests", "infoplists", "entitlements", "resources", "test_host"],
+    implementation = _native_xcodeproj_ascpect_impl,
+    attr_aspects = ["deps", "actual", "tests", "infoplists", "entitlements", "resources", "test_host", "frameworks"],
 )
 
 def _collect_swift_defines(modules):
@@ -732,6 +799,13 @@ env -u RUBYOPT -u RUBY_HOME -u GEM_HOME $BAZEL_BUILD_EXEC $BAZEL_BUILD_TARGET_LA
 $BAZEL_INSTALLER
 """
 
+def get_info_depset(infos, attr):
+    all_trans = []
+    for info in infos:
+        if hasattr(info, attr):
+            all_trans.append(depset(getattr(info, attr)))
+    return depset([], transitive = all_trans)
+
 def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
     """Helper method to generate dicts for targets and schemes inside Xcode context
 
@@ -749,12 +823,12 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
     xcodeproj_targets_by_name = {}
     xcodeproj_schemes_by_name = {}
     for target_info in targets:
+        print(target_info)
         deps_target = []
-        for dep in target_info.deps.to_list():
-            if AppleBundleInfo in dep:
-                deps_target.append(dep[AppleBundleInfo].bundle_name)
-        target_name = target_info.name
-        product_type = target_info.product_type
+        for dep in target_info.framework_deps.to_list():
+            deps_target.append(dep.bundle_info.name)
+        target_name = target_info.bundle_info.name
+        product_type = target_info.bundle_info.product_type
         lldbinit_file = "$CONFIGURATION_TEMP_DIR/%s.lldbinit" % target_name
 
         if target_name in xcodeproj_targets_by_name:
@@ -762,74 +836,80 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
             if product_type != existing_type:
                 fail(_CONFLICTING_TARGET_MSG.format(ctx.label, target_name, existing_type, target_info.bazel_build_target_name, target_info.product_type))
 
+        ## Dynamic lib
         target_macho_type = "staticlib" if product_type == "framework" else "$(inherited)"
-        compiled_sources = [{
-            "path": paths.join(src_dot_dots, s.short_path),
-            "optional": True,
-        } for s in target_info.srcs.to_list()]
-        compiled_non_arc_sources = [{
-            "path": paths.join(src_dot_dots, s.short_path),
-            "optional": True,
-            "compilerFlags": "-fno-objc-arc",
-        } for s in target_info.non_arc_srcs.to_list()]
-        project_headers = [{
-            "path": paths.join(src_dot_dots, s.short_path),
-            "optional": True,
-            "headerVisibility": "project"
-        } for s in target_info.project_hdrs.to_list()]
-        public_headers = [{
-            "path": paths.join(src_dot_dots, s.short_path),
-            "optional": True,
-            "headerVisibility": "public"
-        } for s in target_info.public_hdrs.to_list()]
-        private_headers = [{
-            "path": paths.join(src_dot_dots, s.short_path),
-            "optional": True,
-            "headerVisibility": "private"
-        } for s in target_info.private_hdrs.to_list()]
-
-        asset_sources = _gather_asset_sources(target_info, src_dot_dots)
+        compiled_sources = []
+        compiled_non_arc_sources = []
+        project_headers = []
+        public_headers = []
+        private_headers = []
+        asset_sources = []
+        for src_info in target_info.src_infos:
+            compiled_sources += [{
+                "path": paths.join(src_dot_dots, s.short_path),
+                "optional": True,
+            } for s in src_info.direct_srcs]
+            compiled_non_arc_sources += [{
+                "path": paths.join(src_dot_dots, s.short_path),
+                "optional": True,
+                "compilerFlags": "-fno-objc-arc",
+            } for s in src_info.non_arc_srcs.to_list()]
+            project_headers += [{
+                "path": paths.join(src_dot_dots, s.short_path),
+                "optional": True,
+                "headerVisibility": "project",
+            } for s in src_info.project_hdrs.to_list()]
+            public_headers += [{
+                "path": paths.join(src_dot_dots, s.short_path),
+                "optional": True,
+                "headerVisibility": "public",
+            } for s in src_info.public_hdrs.to_list()]
+            private_headers += [{
+                "path": paths.join(src_dot_dots, s.short_path),
+                "optional": True,
+                "headerVisibility": "private",
+            } for s in src_info.private_hdrs.to_list()]
 
         target_settings = {
             "PRODUCT_NAME": target_name,
             "ONLY_ACTIVE_ARCH": "YES",
-            "BAZEL_BIN_SUBDIR": target_info.bazel_bin_subdir,
+            # "BAZEL_BIN_SUBDIR": target_info.bazel_bin_subdir,
             "MACH_O_TYPE": target_macho_type,
             "CLANG_ENABLE_MODULES": "YES",
             "CLANG_ENABLE_OBJC_ARC": "YES",
-            "BAZEL_BUILD_TARGET_LABEL": target_info.bazel_build_target_name,
-            "BAZEL_BUILD_TARGET_WORKSPACE": target_info.bazel_build_target_workspace,
+            # "BAZEL_BUILD_TARGET_LABEL": target_info.bazel_build_target_name,
+            # "BAZEL_BUILD_TARGET_WORKSPACE": target_info.bazel_build_target_workspace,
             "USE_HEADERMAP": "YES",
         }
-        macros = ["\"%s\"" % d for d in target_info.cc_defines.to_list()]
+        macros = ["\"%s\"" % d for d in get_info_depset(target_info.src_infos, "cc_defines").to_list()]
         macros.append("$(inherited)")
         target_settings["GCC_PREPROCESSOR_DEFINITIONS"] = " ".join(macros)
 
-        if target_info.swift_objc_header_path:
-            target_settings["SWIFT_OBJC_INTERFACE_HEADER_NAME"] = paths.basename(target_info.swift_objc_header_path)
+        if target_info.bundle_info.swift_objc_header_path:
+            target_settings["SWIFT_OBJC_INTERFACE_HEADER_NAME"] = paths.basename(target_info.bundle_info.swift_objc_header_path)
 
         defines_without_equal_sign = ["$(inherited)"]
-        for d in target_info.swift_defines.to_list():
+        for d in get_info_depset(target_info.src_infos, "swift_defines").to_list():
             d = _exclude_swift_incompatible_define(d)
             if d != None:
                 defines_without_equal_sign.append(d)
         target_settings["SWIFT_ACTIVE_COMPILATION_CONDITIONS"] = " ".join(
             ["\"%s\"" % d for d in defines_without_equal_sign],
         )
-        extra_clang_flags = ["-D%s" % d for d in target_info.cc_defines.to_list()]
+        extra_clang_flags = ["-D%s" % d for d in get_info_depset(target_info.src_infos, "cc_defines").to_list()]
 
         # if virtualize_frameworks:
         #     extra_clang_flags += ["-Xcc %s" % d for d in _objc_copts_for_target(target_name, all_transitive_targets)]
 
-        target_settings["PRODUCT_BUNDLE_IDENTIFIER"] = target_info.bundle_id
-        
+        target_settings["PRODUCT_BUNDLE_IDENTIFIER"] = target_info.bundle_info.bundle_id
+
         if product_type == "bundle.unit-test":
             target_settings["SUPPORTS_MACCATALYST"] = False
         target_dependencies = []
-        test_host_appname = getattr(target_info, "test_host_appname", None)
+        test_host_appname = getattr(target_info.bundle_info, "test_host_appname", None)
 
-        target_settings["OTHER_SWIFT_FLAGS"] = " ".join(target_info.swift_copts.to_list())
-        target_settings["OTHER_CFLAGS"] = " ".join(target_info.objc_copts.to_list())
+        target_settings["OTHER_SWIFT_FLAGS"] = " ".join(get_info_depset(target_info.src_infos, "swift_copts").to_list())
+        target_settings["OTHER_CFLAGS"] = " ".join(get_info_depset(target_info.src_infos, "objc_copts").to_list())
         if test_host_appname:
             target_dependencies.append({"target": test_host_appname})
             target_settings["TEST_HOST"] = "$(BUILT_PRODUCTS_DIR)/{test_host_appname}.app/{test_host_appname}".format(test_host_appname = test_host_appname)
@@ -837,12 +917,9 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
         if feature_names.native_xcodeproj in ctx.features:
             for target_dep_name in depset(deps_target).to_list():
                 target_dependencies.append({"target": target_dep_name})
-            
-        if target_info.targeted_device_family:
-            target_settings["TARGETED_DEVICE_FAMILY"] = target_info.targeted_device_family
-        
-        for k, v in target_info.xcconfig.to_list():
-            target_settings[k] = v
+
+        if target_info.bundle_info.targeted_device_family:
+            target_settings["TARGETED_DEVICE_FAMILY"] = target_info.bundle_info.targeted_device_family
 
         pre_build_scripts = []
         if len(ctx.attr.additional_prebuild_script) > 0:
@@ -860,8 +937,8 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
         xcodeproj_targets_by_name[target_name] = {
             "sources": compiled_sources + compiled_non_arc_sources + asset_sources + project_headers + public_headers + private_headers,
             "type": product_type,
-            "platform": _PLATFORM_MAPPING[target_info.platform_type],
-            "deploymentTarget": target_info.minimum_os_version,
+            "platform": _PLATFORM_MAPPING[target_info.bundle_info.platform_type],
+            "deploymentTarget": target_info.bundle_info.minimum_os_version,
             "settings": target_settings,
             "dependencies": target_dependencies,
             "preBuildScripts": pre_build_scripts,
@@ -875,7 +952,7 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
 
         scheme_action_details = {"targets": [target_name]}
         env_vars_dict = {}
-        for (k, v) in getattr(target_info, "env_vars", ()):
+        for (k, v) in getattr(target_info.bundle_info, "env_vars", ()):
             # Specific scheme can override the ones defined under env_vars here:
             if ctx.attr.scheme_existing_envvar_overrides.get(k, None):
                 env_vars_dict[k] = ctx.attr.scheme_existing_envvar_overrides[k]
@@ -883,7 +960,7 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
                 env_vars_dict[k] = v
         scheme_action_details["environmentVariables"] = env_vars_dict
 
-        commandline_args_tuple = getattr(target_info, "commandline_args", ())
+        commandline_args_tuple = getattr(target_info.bundle_info, "commandline_args", ())
         scheme_action_details["commandLineArguments"] = {}
         for arg in commandline_args_tuple:
             scheme_action_details["commandLineArguments"][arg] = True
@@ -924,7 +1001,7 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
         build_target_to_scheme_info = {scheme_info.build_target: scheme_info for scheme_info in scheme_infos}
 
         # They will show as `TestableReference` under the scheme
-        if target_info.product_type == "bundle.unit-test":
+        if target_info.bundle_info.product_type == "bundle.unit-test":
             # All test targets will by default have a test action for themselves.
             xcodeproj_schemes_by_name[target_name]["test"] = {
                 "targets": [target_name],
@@ -1008,13 +1085,14 @@ def _xcodeproj_impl(ctx):
         "groupSortPosition": "none",
         "settingPresets": "none",
     }
-    
+
     proj_settings_base = {}
     if not feature_names.native_xcodeproj in ctx.features:
         # User defined macro for Bazel only
         proj_settings_base.update({
             "BAZEL_BUILD_EXEC": "$BAZEL_STUBS_DIR/build-wrapper",
-            "BAZEL_OUTPUT_PROCESSOR": "$BAZEL_STUBS_DIR/output-processor.rb","BAZEL_PATH": ctx.attr.bazel_path,
+            "BAZEL_OUTPUT_PROCESSOR": "$BAZEL_STUBS_DIR/output-processor.rb",
+            "BAZEL_PATH": ctx.attr.bazel_path,
             "BAZEL_WORKSPACE_ROOT": "$SRCROOT/%s" % script_dot_dots,
             "BAZEL_STUBS_DIR": "$PROJECT_FILE_PATH/bazelstubs",
             "BAZEL_INSTALLERS_DIR": "$PROJECT_FILE_PATH/bazelinstallers",
@@ -1025,6 +1103,7 @@ def _xcodeproj_impl(ctx):
             "BAZEL_ADDITIONAL_BAZEL_BUILD_OPTIONS": " ".join(["{} ".format(opt) for opt in ctx.attr.additional_bazel_build_options]),
             "BAZEL_ADDITIONAL_LLDB_SETTINGS": "\n".join(ctx.attr.additional_lldb_settings),
         })
+
         # Stubbing compiler, linker executables used by xcode so no actual building happening on Xcode side
         proj_settings_base.update({
             "CC": "$BAZEL_STUBS_DIR/clang-stub",
@@ -1039,8 +1118,9 @@ def _xcodeproj_impl(ctx):
 
     # Change of settings to help params used for compiling individual files to match closer to Bazel
     proj_settings_base.update({
-        "SWIFT_VERSION": 5
+        "SWIFT_VERSION": 5,
     })
+
     # For debugging config only:
     proj_settings_debug = {
         "GCC_PREPROCESSOR_DEFINITIONS": "DEBUG",
@@ -1055,14 +1135,15 @@ def _xcodeproj_impl(ctx):
     }
 
     targets = []
-    all_transitive_targets = depset(transitive = _get_attr_values_for_name(ctx.attr.deps, _TargetInfo, "targets")).to_list()
-    if ctx.attr.include_transitive_targets:
-        targets = all_transitive_targets
-    else:
-        targets = []
-        for t in _get_attr_values_for_name(ctx.attr.deps, _TargetInfo, "direct_targets"):
-            targets.extend(t)
-    (xcodeproj_targets_by_name, xcodeproj_schemes_by_name) = _populate_xcodeproj_targets_and_schemes(ctx, all_transitive_targets, src_dot_dots)
+    xcode_target_infos = getattr(ctx.attr, "deps")
+    all_transitive = []
+    for info in xcode_target_infos:
+        if XcodeTargetInfo in info:
+            targets.append(info[XcodeTargetInfo])
+            all_transitive += info[XcodeTargetInfo].framework_deps.to_list()
+    targets += all_transitive
+
+    (xcodeproj_targets_by_name, xcodeproj_schemes_by_name) = _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots)
 
     project_file_groups = [
         {"path": paths.join(src_dot_dots, f.short_path), "optional": True}

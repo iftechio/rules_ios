@@ -57,6 +57,7 @@ def ios_application(name, apple_library = apple_library, infoplists_by_build_set
     application_kwargs["families"] = application_kwargs.pop("families", ["iphone", "ipad"])
 
     import_middleman(name = name + ".import_middleman", deps = library.deps, tags = ["manual"])
+
     rules_apple_ios_application(
         name = name,
         deps = select({
@@ -64,6 +65,6 @@ def ios_application(name, apple_library = apple_library, infoplists_by_build_set
             "//conditions:default": library.lib_names,
         }),
         output_discriminator = None,
-        infoplists = info_plists_by_setting(name = name, infoplists_by_build_setting = infoplists_by_build_setting, default_infoplists = application_kwargs.pop("infoplists", [])),
+        infoplists = application_kwargs.pop("infoplists", []),
         **application_kwargs
     )
