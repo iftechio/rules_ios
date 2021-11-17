@@ -276,17 +276,6 @@ def _xcodeproj_aspect_impl(target, ctx):
             if test_host_target:
                 test_host_appname = test_host_target[_TargetInfo].direct_targets[0].name
 
-        xcconfig = {}
-        if FrameworkInfo in target:
-            for k, v in target[FrameworkInfo].xcconfig:
-                xcconfig[k] = v
-
-        for dep in deps:
-            if _XcodeProjectInfo in dep:
-                bridging_header_path = dep[_XcodeProjectInfo].bridging_header_path
-                if bridging_header_path != None:
-                    xcconfig["SWIFT_OBJC_BRIDGING_HEADER"] = bridging_header_path
-
         framework_includes = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "framework_includes"))
 
         asset_srcs = []
@@ -327,7 +316,6 @@ def _xcodeproj_aspect_impl(target, ctx):
             public_hdrs = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "public_hdrs")),
             private_hdrs = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "private_hdrs")),
             project_hdrs = depset([], transitive = _get_attr_values_for_name(deps, _SrcsInfo, "project_hdrs")),
-            xcconfig = depset(xcconfig.items()),
         )
         if ctx.rule.kind != "apple_framework_packaging":
             providers.append(
@@ -492,7 +480,7 @@ def _native_xcodeproj_ascpect_impl(target, ctx):
     if AppleBundleInfo in target:
         ## This target is a bundle target, we need resources info from itself, source info from it deps
         src_infos = []
-        project_infos = []
+        bridging_header = None
         framework_deps = []
         transitive_framework_deps = []
         swift_objc_header_path = None
@@ -503,6 +491,8 @@ def _native_xcodeproj_ascpect_impl(target, ctx):
             infoplists_depset.append(infoplist_target[DefaultInfo].files)
         infoplists = depset([], transitive = infoplists_depset).to_list()
 
+        bridging_header = None
+
         if SwiftInfo in target:
             for h in target[apple_common.Objc].direct_headers:
                 if h.path.endswith("-Swift.h"):
@@ -510,8 +500,9 @@ def _native_xcodeproj_ascpect_impl(target, ctx):
         for info in ctx.rule.attr.deps:
             if _SrcsInfo in info:
                 src_infos.append(info[_SrcsInfo])
-            elif _XcodeProjectInfo in info:
-                project_infos.append(info[_XcodeProjectInfo])
+            if _XcodeProjectInfo in info:
+                if info[_XcodeProjectInfo].bridging_header_path:
+                    bridging_header = info[_XcodeProjectInfo].bridging_header_path
         for info in ctx.rule.attr.frameworks:
             if XcodeTargetInfo in info:
                 framework_deps.append(info[XcodeTargetInfo])
@@ -566,11 +557,12 @@ def _native_xcodeproj_ascpect_impl(target, ctx):
             mach_o_type = mach_o_type,
             infoplists = infoplists,
             app_icon = app_icon,
+            bridging_header = bridging_header,
             targeted_device_family = _targeted_device_family(ctx),
         )
         providers.append(XcodeTargetInfo(
             src_infos = src_infos,
-            project_infos = project_infos,
+            # project_infos = project_infos,
             framework_deps = depset(framework_deps, transitive = transitive_framework_deps),
             bundle_info = bundle_info_for_xcode,
             resources = depset([], transitive = resources),
@@ -926,6 +918,9 @@ def _populate_xcodeproj_targets_and_schemes(ctx, targets, src_dot_dots):
 
         if target_info.bundle_info.swift_objc_header_path:
             target_settings["SWIFT_OBJC_INTERFACE_HEADER_NAME"] = paths.basename(target_info.bundle_info.swift_objc_header_path)
+
+        if target_info.bundle_info.bridging_header:
+            target_settings["SWIFT_OBJC_BRIDGING_HEADER"] = target_info.bundle_info.bridging_header
 
         defines_without_equal_sign = ["$(inherited)"]
         for d in get_info_depset(target_info.src_infos, "swift_defines").to_list():
