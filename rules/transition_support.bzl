@@ -18,26 +18,42 @@ def _cpu_string(platform_type, settings):
 
     # If the cpu value has already been transformed to the correct value, we must not change it anymore.
     # Otherwise, we may build for the wrong arch.
-    cpu_value = settings["//command_line_option:cpu"]
-    if (platform_type == "macos" and cpu_value.startswith("{}_".format(platform_type))) or cpu_value.startswith("{}_".format(platform_type)):
-        return cpu_value
+    cpu = settings["//command_line_option:cpu"]
+    if cpu.startswith("{}_".format(platform_type)):
+        cpu = cpu[(len("{}_".format(platform_type))):]
 
     if platform_type == "ios":
+        if cpu:
+            return "ios_{}".format(cpu)
         ios_cpus = settings["//command_line_option:ios_multi_cpus"]
         if ios_cpus:
             return "ios_{}".format(ios_cpus[0])
+        cpu_value = settings["//command_line_option:cpu"]
+        if cpu_value.startswith("ios_"):
+            return cpu_value
+        if cpu_value == "darwin_arm64":
+            return "ios_sim_arm64"
         return "ios_x86_64"
     if platform_type == "macos":
+        if cpu:
+            return "darwin_{}".format(cpu)
         macos_cpus = settings["//command_line_option:macos_cpus"]
         if macos_cpus:
             return "darwin_{}".format(macos_cpus[0])
+        cpu_value = settings["//command_line_option:cpu"]
+        if cpu_value.startswith("darwin_"):
+            return cpu_value
         return "darwin_x86_64"
     if platform_type == "tvos":
+        if cpu:
+            return "tvos_{}".format(cpu)
         tvos_cpus = settings["//command_line_option:tvos_cpus"]
         if tvos_cpus:
             return "tvos_{}".format(tvos_cpus[0])
         return "tvos_x86_64"
     if platform_type == "watchos":
+        if cpu:
+            return "watchos_{}".format(cpu)
         watchos_cpus = settings["//command_line_option:watchos_cpus"]
         if watchos_cpus:
             return "watchos_{}".format(watchos_cpus[0])
