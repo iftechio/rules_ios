@@ -102,3 +102,10 @@ available_xcodes(
         ":version12_2_0_12B45b",
     ],
 )
+
+config_setting(
+    name = "native_xcodeproj",
+    values = {
+        "features": feature_names.native_xcodeproj,
+    },
+)
