@@ -745,6 +745,7 @@ def apple_library(name, library_tools = {}, export_private_headers = True, names
         namespace = namespace,
         hdrs = [public_hdrs_filegroup],
         tags = _MANUAL,
+        **kwargs
     )
     private_deps.append(public_hmap_name)
 
@@ -781,7 +782,7 @@ def apple_library(name, library_tools = {}, export_private_headers = True, names
     headermap(
         name = project_hmap_name,
         namespace = namespace,
-        hdrs=[],
+        hdrs = [],
         direct_hdr_providers = deps,
         tags = _MANUAL,
     )
