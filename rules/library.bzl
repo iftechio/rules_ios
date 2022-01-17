@@ -519,7 +519,7 @@ def apple_library(name, library_tools = {}, export_private_headers = True, names
     fetch_default_xcconfig = library_tools["fetch_default_xcconfig"](name, library_tools, default_xcconfig_name, **kwargs) if default_xcconfig_name else {}
     copts_by_build_setting = copts_by_build_setting_with_defaults(xcconfig, fetch_default_xcconfig, xcconfig_by_build_setting)
     enable_framework_vfs = kwargs.pop("enable_framework_vfs", False) or namespace_is_module_name
-    is_framework = kwargs.pop("is_framework", False)
+    is_framework = kwargs.pop("is_framework", True)
 
     for (k, v) in {"momc_copts": momc_copts, "mapc_copts": mapc_copts, "ibtool_copts": ibtool_copts}.items():
         if v:
@@ -721,7 +721,7 @@ def apple_library(name, library_tools = {}, export_private_headers = True, names
                 public_headers = objc_hdrs,
                 private_headers = objc_private_hdrs,
                 module_name = module_name,
-                framework = True,
+                framework = is_framework,
                 **kwargs
             )
 
