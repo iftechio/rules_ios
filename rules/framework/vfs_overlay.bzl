@@ -108,7 +108,7 @@ def _make_root(vfs_parent, bin_dir_path, build_file_path, framework_name, swiftm
             path = hdr.path
             framework_path = _get_public_framework_header(path)
             if not framework_path:
-                continue
+               framework_path = hdr.basename
             paths.append(struct(path = hdr.path, framework_path = framework_path))
         subtrees = _build_subtrees(paths, vfs_prefix)
         headers_contents.extend(subtrees["contents"])
@@ -171,7 +171,6 @@ def _make_root(vfs_parent, bin_dir_path, build_file_path, framework_name, swiftm
             }
             for file in hdrs
         ])
-
     headers = []
     if len(headers_contents):
         headers = [{
