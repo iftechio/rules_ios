@@ -95,7 +95,7 @@ def _get_public_framework_header(path):
 # Make roots for a given framework. For now this is done in starlark for speed
 # and incrementality. For imported frameworks, there is additional search paths
 # enabled
-def _make_root(vfs_parent, bin_dir_path, build_file_path, framework_name, swiftmodules, root_dir, extra_search_paths, module_map, hdrs, private_hdrs, has_swift):
+def _make_root(vfs_parent, bin_dir_path, build_file_path, framework_name, swiftmodules, swift_target_triple, root_dir, extra_search_paths, module_map, hdrs, private_hdrs, has_swift):
     vfs_prefix = _make_relative_prefix(len(vfs_parent.split("/")) - 1)
     extra_roots = []
     private_headers_contents = []
@@ -108,7 +108,7 @@ def _make_root(vfs_parent, bin_dir_path, build_file_path, framework_name, swiftm
             path = hdr.path
             framework_path = _get_public_framework_header(path)
             if not framework_path:
-               framework_path = hdr.basename
+                framework_path = hdr.basename
             paths.append(struct(path = hdr.path, framework_path = framework_path))
         subtrees = _build_subtrees(paths, vfs_prefix)
         headers_contents.extend(subtrees["contents"])
@@ -118,7 +118,7 @@ def _make_root(vfs_parent, bin_dir_path, build_file_path, framework_name, swiftm
             path = hdr.path
             framework_path = _get_private_framework_header(path)
             if not framework_path:
-                continue
+                framework_path = hdr.basename
             paths.append(struct(path = hdr.path, framework_path = framework_path))
         subtrees = _build_subtrees(paths, vfs_prefix)
         private_headers_contents.extend(subtrees["contents"])
@@ -150,6 +150,30 @@ def _make_root(vfs_parent, bin_dir_path, build_file_path, framework_name, swiftm
                         }
                         for file in swiftmodules
                     ],
+                })
+        else:
+            modules = {}
+            for file in swiftmodules:
+                extension = file.extension
+                extension_len = len(extension) + 1
+                name = file.basename[:-extension_len]
+                arr = modules.get(name, [])
+                arr.append(file)
+                modules[name] = arr
+
+            for module in modules.keys():
+                module_files = modules[module]
+                contents_for_current_module = []
+                for module_file in module_files:
+                    contents_for_current_module.append({
+                        "type": "file",
+                        "name": swift_target_triple + "." + module_file.extension,
+                        "external-contents": _get_external_contents(vfs_prefix, module_file.path),
+                    })
+                modules_contents.append({
+                    "type": "directory",
+                    "name":  module + ".swiftmodule",
+                    "contents": contents_for_current_module,
                 })
 
     modules = []
@@ -291,13 +315,14 @@ def _roots_from_datas(vfs_parent, datas):
             extra_search_paths = data.extra_search_paths,
             module_map = data.module_map,
             swiftmodules = data.swiftmodules,
+            swift_target_triple = data.swift_target_triple,
             hdrs = data.hdrs,
             private_hdrs = data.private_hdrs,
             has_swift = data.has_swift,
         ))
     return roots
 
-def make_vfsoverlay(ctx, hdrs, module_map, private_hdrs, has_swift, swiftmodules = [], merge_vfsoverlays = [], extra_search_paths = None, output = None, framework_name = None):
+def make_vfsoverlay(ctx, hdrs, module_map, private_hdrs, has_swift, swift_target_triple = None, swiftmodules = [], merge_vfsoverlays = [], extra_search_paths = None, output = None, framework_name = None):
     if framework_name == None:
         framework_name = ctx.attr.framework_name
 
@@ -315,6 +340,7 @@ def make_vfsoverlay(ctx, hdrs, module_map, private_hdrs, has_swift, swiftmodules
         extra_search_paths = extra_search_paths,
         module_map = module_map,
         swiftmodules = swiftmodules,
+        swift_target_triple = swift_target_triple,
         hdrs = hdrs,
         private_hdrs = private_hdrs,
         has_swift = has_swift,
@@ -329,6 +355,7 @@ def make_vfsoverlay(ctx, hdrs, module_map, private_hdrs, has_swift, swiftmodules
         extra_search_paths = extra_search_paths,
         module_map = module_map,
         swiftmodules = swiftmodules,
+        swift_target_triple = swift_target_triple,
         hdrs = hdrs,
         private_hdrs = private_hdrs,
         has_swift = has_swift,
